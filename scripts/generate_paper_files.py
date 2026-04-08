@@ -69,8 +69,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--max-workers",
         type=int,
-        default=4,
-        help="Number of parallel worker threads (default: 4)",
+        default=1,
+        help="Number of parallel worker threads (default: 1)",
     )
     p.add_argument(
         "--overwrite",
