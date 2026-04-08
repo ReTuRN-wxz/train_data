@@ -56,7 +56,7 @@ llm_provider: "kimi"         # Currently only "kimi" is supported
 # API credentials are read from environment variables:
 #   KIMI_API_KEY   (required to enable LLM features)
 #   KIMI_BASE_URL  (optional, default: https://api.moonshot.cn/v1)
-#   KIMI_MODEL     (optional, default: kimi2.5thinking)
+#   KIMI_MODEL     (optional, default: kimi-k2.5)
 
 # ── Concurrency / reliability ──────────────────────────────────────────────────
 max_workers: 4               # Parallel worker threads for file generation
