@@ -45,7 +45,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _PDF_TIMEOUT = 60  # seconds
-_PDF_MAX_SIZE = 50 * 1024 * 1024  # 50 MB
+_PDF_MAX_SIZE_MB = 50
+_PDF_MAX_SIZE = _PDF_MAX_SIZE_MB * 1024 * 1024
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +226,7 @@ class PaperFileGenerator:
                 for chunk in resp.iter_content(chunk_size=8192):
                     size += len(chunk)
                     if size > _PDF_MAX_SIZE:
-                        logger.warning("PDF too large (>%d MB), skipping.", _PDF_MAX_SIZE // (1024 * 1024))
+                        logger.warning("PDF too large (>%d MB), skipping.", _PDF_MAX_SIZE_MB)
                         f.close()
                         pdf_path.unlink(missing_ok=True)
                         return

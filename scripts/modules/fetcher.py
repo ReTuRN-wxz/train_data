@@ -222,7 +222,10 @@ class SemanticScholarFetcher:
 
         external_ids = item.get("externalIds") or {}
         arxiv_raw = external_ids.get("ArXiv", "")
-        arxiv_id = f"{arxiv_raw}v1" if arxiv_raw and not arxiv_raw[0].isalpha() else arxiv_raw
+        if arxiv_raw and not re.search(r"v\d+$", arxiv_raw):
+            arxiv_id = f"{arxiv_raw}v1"
+        else:
+            arxiv_id = arxiv_raw
 
         pdf_info = item.get("openAccessPdf") or {}
         pdf_url = pdf_info.get("url", "")
@@ -416,7 +419,7 @@ class OpenAlexFetcher:
         best_oa = item.get("best_oa_location") or {}
         pdf_url = best_oa.get("pdf_url") or ""
         if not pdf_url and arxiv_id:
-            pdf_url = f"https://arxiv.org/pdf/{arxiv_id.rstrip('v1')}"
+            pdf_url = f"https://arxiv.org/pdf/{re.sub(r'v\\d+$', '', arxiv_id)}"
 
         authors = []
         for a in item.get("authorships", []):

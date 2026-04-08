@@ -287,7 +287,8 @@ def fetch_papers(cfg: Dict[str, Any]) -> List[PaperRecord]:
         )
         # Batch keywords into groups to get broader coverage
         batch_size = 5
-        per_batch = max(50, total // max(1, len(keywords) // batch_size))
+        num_batches = max(1, (len(keywords) + batch_size - 1) // batch_size)
+        per_batch = max(50, total // num_batches)
 
         for i in range(0, len(keywords), batch_size):
             batch = keywords[i: i + batch_size]

@@ -11,7 +11,7 @@ Usage::
 Environment variables (all optional – if unset the client gracefully degrades):
     KIMI_API_KEY     – API key for Moonshot/Kimi
     KIMI_BASE_URL    – Base URL  (default: https://api.moonshot.cn/v1)
-    KIMI_MODEL       – Model name (default: moonshot-v1-8k mapped to kimi2.5thinking)
+    KIMI_MODEL       – Model name (default: kimi2.5thinking)
 """
 
 from __future__ import annotations
