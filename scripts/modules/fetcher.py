@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _ARXIV_FROM_DOI = re.compile(r"arxiv[./](\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
 _ARXIV_FROM_ID = re.compile(r"arxiv\.org/abs/(\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
+_OPENALEX_ID = re.compile(r"openalex\.org/(W\d+)", re.IGNORECASE)
 
 
 @dataclass
@@ -64,13 +65,19 @@ class PaperRecord:
 
         Priority:
           1. arXiv ID  (e.g. '2103.00020v1')
-          2. DOI slug  (last path segment, e.g. 's41587-019-0209-9')
-          3. Sanitised title  (truncated to 80 chars)
-          4. paper_id slug
+          2. OpenAlex ID  (e.g. 'W4385245566')
+          3. DOI slug  (last path segment, e.g. 's41587-019-0209-9')
+          4. Sanitised title  (truncated to 80 chars)
+          5. paper_id slug
         """
         arxiv = self.arxiv_id
         if arxiv:
             return arxiv.replace("/", "_")
+
+        if self.paper_id:
+            m = _OPENALEX_ID.search(self.paper_id)
+            if m:
+                return m.group(1)
 
         if self.doi:
             slug = self.doi.rstrip("/").split("/")[-1]
