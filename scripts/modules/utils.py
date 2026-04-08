@@ -1,7 +1,11 @@
 """
 Utility helpers: filename sanitization, schema validation, retry decorator.
 """
-
+import functools
+import logging
+import random
+import time
+import requests
 import re
 import time
 import logging
@@ -75,51 +79,52 @@ def validate_schema(data: Dict[str, Any], schema: Dict[str, type]) -> List[str]:
 
 
 def retry(
-    max_attempts: int = 3,
-    delay: float = 2.0,
-    backoff: float = 2.0,
-    exceptions: tuple = (Exception,),
-) -> Callable[[F], F]:
-    """Decorator that retries *func* up to *max_attempts* times on *exceptions*.
-
-    Args:
-        max_attempts: Total number of attempts (including the first call).
-        delay: Initial sleep time in seconds between attempts.
-        backoff: Multiplier applied to *delay* after each failure.
-        exceptions: Tuple of exception types that trigger a retry.
-    """
-
-    def decorator(func: F) -> F:
+    max_attempts: int = 5,
+    base_wait: float = 2.0,
+    max_wait: float = 60.0,
+    retry_on=(requests.exceptions.RequestException,),
+):
+    def deco(func):
         @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            wait = delay
-            last_exc: Optional[Exception] = None
-            for attempt in range(1, max_attempts + 1):
+        def wrapper(*args, **kwargs):
+            attempt = 0
+            while True:
+                attempt += 1
                 try:
                     return func(*args, **kwargs)
-                except exceptions as exc:
-                    last_exc = exc
-                    if attempt < max_attempts:
-                        logger.warning(
-                            "Attempt %d/%d for '%s' failed: %s. "
-                            "Retrying in %.1fs …",
-                            attempt,
-                            max_attempts,
-                            func.__name__,
-                            exc,
-                            wait,
-                        )
-                        time.sleep(wait)
-                        wait *= backoff
-                    else:
-                        logger.error(
-                            "All %d attempts for '%s' failed: %s",
-                            max_attempts,
-                            func.__name__,
-                            exc,
-                        )
-            raise last_exc  # type: ignore[misc]
+                except retry_on as e:
+                    if attempt >= max_attempts:
+                        raise
 
-        return wrapper  # type: ignore[return-value]
+                    wait = None
+                    status = None
+                    resp = getattr(e, "response", None)
+                    if resp is not None:
+                        status = resp.status_code
 
-    return decorator
+                    # 429: 优先使用 Retry-After
+                    if status == 429 and resp is not None:
+                        ra = resp.headers.get("Retry-After")
+                        if ra:
+                            try:
+                                wait = float(ra)
+                            except ValueError:
+                                wait = None
+
+                    # fallback: 指数退避 + 抖动
+                    if wait is None:
+                        wait = min(max_wait, base_wait * (2 ** (attempt - 1)))
+                        wait += random.uniform(0, 1.5)
+
+                    logger.warning(
+                        "Attempt %s/%s for '%s' failed (%s). Retrying in %.1fs ...",
+                        attempt,
+                        max_attempts,
+                        func.__name__,
+                        f"HTTP {status}" if status else repr(e),
+                        wait,
+                    )
+                    time.sleep(wait)
+
+        return wrapper
+    return deco

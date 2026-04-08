@@ -270,10 +270,17 @@ def fetch_papers(cfg: Dict[str, Any]) -> List[PaperRecord]:
     timeout: int = cfg["api_timeout"]
     fields_of_study: List[str] = cfg.get("fields_of_study", [])
 
+    year_start = cfg.year_start if cfg.year_start is not None else "N/A"
+    year_end = cfg.year_end if cfg.year_end is not None else "N/A"
+
     logger.info(
-        "Fetching papers: source=%s, keywords=%d, years=%d-%d, "
-        "min_citations=%d, total=%d",
-        source, len(keywords), start_year, end_year, min_citations, total,
+        "Fetching papers: source=%s, keywords=%d, years=%s-%s, min_citations=%d, total=%d",
+        cfg.source,
+        len(cfg.keywords),
+        year_start,
+        year_end,
+        cfg.min_citations,
+        cfg.total,
     )
 
     all_records: List[PaperRecord] = []

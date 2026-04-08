@@ -25,6 +25,9 @@ keywords:
   - "climate science"
   - "materials science"
   - "particle physics"
+  - "algebra"
+  - "number theory"
+  - "combinatorics"
 
 # Semantic Scholar fields-of-study filter (optional, set to [] to disable)
 fields_of_study:
@@ -41,7 +44,7 @@ fields_of_study:
 min_citations: 100           # Minimum citation count to include a paper
 
 # ── Volume ────────────────────────────────────────────────────────────────────
-total_papers: 200            # Total number of papers to collect
+total_papers: 20            # Total number of papers to collect
 
 # ── Output ────────────────────────────────────────────────────────────────────
 output_dir: "."              # Root directory (repo root by default)
