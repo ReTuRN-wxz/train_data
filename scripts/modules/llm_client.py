@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -154,7 +155,13 @@ class KimiClient(LLMClient):
         KIMI_API_KEY   – required
         KIMI_BASE_URL  – optional, defaults to https://api.moonshot.cn/v1
         KIMI_MODEL     – optional, defaults to kimi2.5thinking
+
+    A class-level semaphore limits concurrent API calls to 2, staying safely
+    under Kimi's default org concurrency limit of 3.
     """
+
+    # Kimi's org-level concurrency limit is 3; keep ≤2 to leave headroom.
+    _concurrency_semaphore: threading.Semaphore = threading.Semaphore(2)
 
     def __init__(
         self,
@@ -222,7 +229,11 @@ class KimiClient(LLMClient):
     # ------------------------------------------------------------------
 
     def _chat(self, system: str, user: str) -> str:
-        """Call the chat completions endpoint and return the assistant message."""
+        """Call the chat completions endpoint and return the assistant message.
+
+        Acquires the class-level semaphore before each attempt to ensure at most
+        ``_concurrency_semaphore`` requests are in-flight at the same time.
+        """
         import time
 
         try:
@@ -240,14 +251,15 @@ class KimiClient(LLMClient):
         delay = 5.0
         for attempt in range(1, self._max_retries + 1):
             try:
-                response = client.chat.completions.create(
-                    model=self._model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
-                    timeout=self._timeout,
-                )
+                with self._concurrency_semaphore:
+                    response = client.chat.completions.create(
+                        model=self._model,
+                        messages=[
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user},
+                        ],
+                        timeout=self._timeout,
+                    )
                 return response.choices[0].message.content or ""
             except Exception as exc:
                 last_exc = exc
@@ -289,11 +301,12 @@ class KimiClient(LLMClient):
         delay = 5.0
         for attempt in range(1, self._max_retries + 1):
             try:
-                resp = requests.post(
-                    url, headers=headers, json=payload, timeout=self._timeout
-                )
-                resp.raise_for_status()
-                data = resp.json()
+                with self._concurrency_semaphore:
+                    resp = requests.post(
+                        url, headers=headers, json=payload, timeout=self._timeout
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
                 return data["choices"][0]["message"]["content"]
             except Exception as exc:
                 last_exc = exc
