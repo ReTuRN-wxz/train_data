@@ -1,11 +1,112 @@
+import re
 import time
 import random
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# PaperRecord — canonical in-memory representation of a fetched paper
+# ---------------------------------------------------------------------------
+
+_ARXIV_FROM_DOI = re.compile(r"arxiv[./](\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
+_ARXIV_FROM_ID = re.compile(r"arxiv\.org/abs/(\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
+
+
+@dataclass
+class PaperRecord:
+    """Unified record produced by any fetcher backend."""
+
+    paper_id: str = ""           # source-specific ID (e.g. OpenAlex W-ID or arXiv)
+    doi: Optional[str] = None
+    title: str = ""
+    abstract: Optional[str] = None
+    authors: List[str] = field(default_factory=list)
+    year: Optional[int] = None
+    publication_date: Optional[str] = None
+    venue: Optional[str] = None
+    citation_count: int = 0
+    pdf_url: Optional[str] = None
+    external_ids: Dict[str, Any] = field(default_factory=dict)
+    source: str = ""
+
+    # ------------------------------------------------------------------
+    # Derived helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def arxiv_id(self) -> Optional[str]:
+        """Return a normalised arXiv ID (e.g. '2103.00020v1') when available."""
+        # 1. explicit external_ids
+        for key in ("ArXiv", "arxiv", "ar5iv"):
+            val = self.external_ids.get(key)
+            if val:
+                return str(val)
+        # 2. extract from DOI string
+        if self.doi:
+            m = _ARXIV_FROM_DOI.search(self.doi)
+            if m:
+                return m.group(1)
+        # 3. extract from paper_id URL
+        if self.paper_id:
+            m = _ARXIV_FROM_ID.search(self.paper_id)
+            if m:
+                return m.group(1)
+        return None
+
+    def folder_name(self) -> str:
+        """Return the folder/file-stem name for this paper.
+
+        Priority:
+          1. arXiv ID  (e.g. '2103.00020v1')
+          2. DOI slug  (last path segment, e.g. 's41587-019-0209-9')
+          3. Sanitised title  (truncated to 80 chars)
+          4. paper_id slug
+        """
+        arxiv = self.arxiv_id
+        if arxiv:
+            return arxiv.replace("/", "_")
+
+        if self.doi:
+            slug = self.doi.rstrip("/").split("/")[-1]
+            slug = re.sub(r"[^\w.\-]", "_", slug)
+            if slug:
+                return slug
+
+        if self.title:
+            slug = re.sub(r"[^\w\s\-]", "", self.title)
+            slug = re.sub(r"\s+", "_", slug.strip())[:80]
+            if slug:
+                return slug
+
+        return re.sub(r"[^\w\-]", "_", self.paper_id)[:80] or "unknown_paper"
+
+    # ------------------------------------------------------------------
+    # Factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "PaperRecord":
+        """Build a PaperRecord from a plain dict (e.g. a row from papers.jsonl)."""
+        return cls(
+            paper_id=d.get("paper_id", ""),
+            doi=d.get("doi"),
+            title=d.get("title", ""),
+            abstract=d.get("abstract"),
+            authors=d.get("authors") or [],
+            year=d.get("year"),
+            publication_date=d.get("publication_date"),
+            venue=d.get("venue"),
+            citation_count=d.get("citation_count") or 0,
+            pdf_url=d.get("pdf_url"),
+            external_ids=d.get("external_ids") or {},
+            source=d.get("source", ""),
+        )
 
 
 class OpenAlexFetcher:
