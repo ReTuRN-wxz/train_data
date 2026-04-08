@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Default configuration for build_paper_dataset.py
+# All values can be overridden via CLI arguments or a custom config file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Data source ──────────────────────────────────────────────────────────────
+source: "semantic_scholar"   # "semantic_scholar" | "openalex"
+
+# ── Year range ───────────────────────────────────────────────────────────────
+start_year: 2018
+end_year: null               # null = current year
+
+# ── Keyword / subject filters ────────────────────────────────────────────────
+# Default covers broad STEM topics.  Override with your own list.
+keywords:
+  - "deep learning"
+  - "machine learning"
+  - "neural network"
+  - "computer vision"
+  - "natural language processing"
+  - "reinforcement learning"
+  - "quantum computing"
+  - "bioinformatics"
+  - "genomics"
+  - "climate science"
+  - "materials science"
+  - "particle physics"
+
+# Semantic Scholar fields-of-study filter (optional, set to [] to disable)
+fields_of_study:
+  - "Computer Science"
+  - "Physics"
+  - "Biology"
+  - "Chemistry"
+  - "Mathematics"
+  - "Engineering"
+  - "Medicine"
+  - "Environmental Science"
+
+# ── Quality thresholds ────────────────────────────────────────────────────────
+min_citations: 100           # Minimum citation count to include a paper
+
+# ── Volume ────────────────────────────────────────────────────────────────────
+total_papers: 200            # Total number of papers to collect
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output_dir: "."              # Root directory (repo root by default)
+overwrite: false             # Regenerate even if folder already exists
+download_pdf: true           # Attempt to download PDFs
+
+# ── LLM ───────────────────────────────────────────────────────────────────────
+llm_provider: "kimi"         # Currently only "kimi" is supported
+# API credentials are read from environment variables:
+#   KIMI_API_KEY   (required to enable LLM features)
+#   KIMI_BASE_URL  (optional, default: https://api.moonshot.cn/v1)
+#   KIMI_MODEL     (optional, default: kimi2.5thinking)
+
+# ── Concurrency / reliability ──────────────────────────────────────────────────
+max_workers: 4               # Parallel worker threads for file generation
+api_requests_per_second: 1.0 # Rate limit for paper metadata API calls
+retry_attempts: 3            # Max retries per failed operation
+retry_delay: 5.0             # Initial retry delay in seconds
+api_timeout: 30              # HTTP request timeout in seconds
+llm_timeout: 120             # LLM API timeout in seconds
+
+# ── Semantic Scholar ───────────────────────────────────────────────────────────
+# semantic_scholar_api_key: ""   # Optional; higher rate limit with a key
+#                                # See: https://www.semanticscholar.org/product/api
+
+# ── OpenAlex ─────────────────────────────────────────────────────────────────
+# openalex_email: ""             # Optional; enables the "polite pool"
+#                                # See: https://docs.openalex.org/how-to-use-the-api/rate-limits-and-authentication
