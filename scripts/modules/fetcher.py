@@ -251,6 +251,7 @@ class OpenAlexFetcher:
                 "select": ",".join(
                     [
                         "id",
+                        "ids",
                         "doi",
                         "title",
                         "publication_year",
@@ -278,7 +279,12 @@ class OpenAlexFetcher:
                 break
 
             for r in results:
-                out.append(self._normalize_one(r))
+                record = self._normalize_one(r)
+                # Only keep papers that have an arXiv ID so folder names are clean.
+                arxiv_id = record.get("external_ids", {}).get("ArXiv")
+                if not arxiv_id:
+                    continue
+                out.append(record)
                 if len(out) >= total:
                     break
 
@@ -303,6 +309,21 @@ class OpenAlexFetcher:
 
         abstract = self._abstract_from_inverted_index(r.get("abstract_inverted_index"))
 
+        # Extract arXiv ID from the OpenAlex 'ids' field (e.g. ids.arxiv =
+        # "https://arxiv.org/abs/2103.00020").
+        external_ids: Dict[str, Any] = {}
+        ids_obj = r.get("ids") or {}
+        arxiv_url = ids_obj.get("arxiv")
+        if arxiv_url:
+            m = _ARXIV_FROM_ID.search(str(arxiv_url))
+            if m:
+                external_ids["ArXiv"] = m.group(1)
+
+        # Derive pdf_url from the arXiv ID when present.
+        pdf_url: Optional[str] = None
+        if external_ids.get("ArXiv"):
+            pdf_url = f"https://arxiv.org/pdf/{external_ids['ArXiv']}"
+
         return {
             "paper_id": r.get("id"),
             "doi": r.get("doi"),
@@ -313,7 +334,7 @@ class OpenAlexFetcher:
             "publication_date": r.get("publication_date"),
             "venue": venue,
             "citation_count": r.get("cited_by_count"),
-            "pdf_url": None,  # OpenAlex 不总是直接给 PDF
-            "external_ids": {},
+            "pdf_url": pdf_url,
+            "external_ids": external_ids,
             "source": "openalex",
         }
