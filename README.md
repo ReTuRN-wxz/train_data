@@ -3,26 +3,33 @@
 This repository stores high-quality STEM research papers in a structured format
 suitable for training or fine-tuning language models.
 
+The pipeline is split into two steps:
+
+1. **`scripts/build_paper_dataset.py`** — query OpenAlex and save metadata to `papers.jsonl`
+2. **`scripts/generate_paper_files.py`** — read `papers.jsonl` and generate per-paper folders with AI-enriched content
+
 ---
 
 ## Directory layout
 
 ```
 train_data/
-├── <arxiv_id_or_paper_id>/        ← one folder per paper
-│   ├── <id>.md                    ← full-text / AI-generated Markdown
+├── <arxiv_id_or_paper_id>/        ← one folder per paper (created by step 2)
+│   ├── <id>.md                    ← AI-generated Markdown introduction
 │   ├── <id>.parsed.json           ← {file_name, title, full_text}
-│   ├── <id>.pdf                   ← PDF (downloaded when available)
+│   ├── <id>.pdf                   ← PDF (downloaded when pdf_url is available)
 │   ├── <id>.raw.txt               ← plain-text summary with layer tags
 │   └── <id>.summary.json          ← {concept_layer, detail_layer, application_layer}
+├── papers.jsonl                   ← paper metadata produced by step 1
 ├── scripts/
-│   ├── build_paper_dataset.py     ← main automation script
-│   ├── config.yaml                ← default configuration
+│   ├── build_paper_dataset.py     ← step 1: fetch & save paper metadata
+│   ├── generate_paper_files.py    ← step 2: generate per-paper folders
+│   ├── config.yaml                ← reference configuration (values / comments)
 │   └── modules/
-│       ├── fetcher.py             ← Semantic Scholar / OpenAlex API
-│       ├── file_generator.py      ← template-driven file writer
+│       ├── fetcher.py             ← OpenAlex API client
+│       ├── file_generator.py      ← file writer for each paper
 │       ├── llm_client.py          ← Kimi / Moonshot LLM abstraction
-│       └── utils.py               ← helpers (sanitization, retries, schema)
+│       └── utils.py               ← helpers (filename sanitization, etc.)
 └── requirements.txt
 ```
 
@@ -41,33 +48,6 @@ pip install -r requirements.txt
 
 ---
 
-## Configuration
-
-Configuration is driven by **`scripts/config.yaml`**.  You can:
-
-1. Edit `scripts/config.yaml` directly.
-2. Supply a custom YAML file via `--config my_config.yaml`.
-3. Override individual values with CLI flags (highest priority).
-
-### Key parameters
-
-| Parameter | Default | Description |
-|---|---|---|
-| `source` | `semantic_scholar` | API backend: `semantic_scholar` or `openalex` |
-| `start_year` | `2018` | Earliest publication year |
-| `end_year` | current year | Latest publication year |
-| `keywords` | STEM list | List of search terms |
-| `fields_of_study` | major sciences | Semantic Scholar field filter |
-| `min_citations` | `100` | Minimum citation count |
-| `total_papers` | `200` | Number of papers to collect |
-| `output_dir` | `.` (repo root) | Where to write paper folders |
-| `overwrite` | `false` | Regenerate existing folders |
-| `download_pdf` | `true` | Download open-access PDFs |
-| `max_workers` | `4` | Parallel threads for generation |
-| `llm_provider` | `kimi` | LLM backend for AI summaries |
-
----
-
 ## Environment variables
 
 | Variable | Required | Default | Description |
@@ -75,14 +55,10 @@ Configuration is driven by **`scripts/config.yaml`**.  You can:
 | `KIMI_API_KEY` | **yes** (for LLM) | – | Moonshot/Kimi API key |
 | `KIMI_BASE_URL` | no | `https://api.moonshot.cn/v1` | API base URL |
 | `KIMI_MODEL` | no | `kimi2.5thinking` | Model name |
-| `SEMANTIC_SCHOLAR_API_KEY` | no | – | Higher rate-limit S2 key |
-| `OPENALEX_EMAIL` | no | – | Enables OpenAlex "polite pool" |
 
-> **Without `KIMI_API_KEY`** the script runs in **metadata-only mode**: paper
-> folders are created with real citation/abstract data, but the summary fields
-> contain placeholder text instead of AI-generated content.
-
-Set variables before running:
+> **Without `KIMI_API_KEY`** step 2 runs in **metadata-only mode**: per-paper
+> folders are still created with real citation/abstract data, but summaries and
+> full-text contain placeholder stubs instead of AI-generated content.
 
 ```bash
 export KIMI_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
@@ -92,77 +68,120 @@ export KIMI_MODEL="kimi2.5thinking"                  # optional
 
 ---
 
-## Running examples
+## Usage
 
-### Quickstart (metadata-only, no LLM key needed)
+### Step 1 — Fetch paper metadata
 
-```bash
-python scripts/build_paper_dataset.py \
-    --total 20 \
-    --min-citations 500 \
-    --output-dir ./data
-```
-
-### Full run with LLM summaries
+`build_paper_dataset.py` queries OpenAlex and writes results to a JSONL file.
 
 ```bash
-export KIMI_API_KEY="sk-..."
+# Basic usage – writes to papers.jsonl in the current directory
+python scripts/build_paper_dataset.py
 
+# Custom keywords, date range and output path
 python scripts/build_paper_dataset.py \
-    --keywords "transformer,attention,large language model,BERT,GPT" \
-    --start-year 2020 \
+    --keywords "transformer" "large language model" "BERT" \
+    --year-start 2020 \
     --total 100 \
     --min-citations 200 \
-    --output-dir ./data \
+    --output-dir . \
+    --output-file papers.jsonl
+```
+
+#### `build_paper_dataset.py` CLI flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--keywords` | STEM list | One or more search terms (space-separated) |
+| `--total` | `100` | Number of papers to fetch |
+| `--page-size` | `25` | Results per API page |
+| `--year-start` | `2018` | Earliest publication year |
+| `--year-end` | _(none)_ | Latest publication year |
+| `--min-citations` | `100` | Minimum citation count |
+| `--source` | `openalex` | Data source (currently only `openalex`) |
+| `--mailto` | _(none)_ | Email for OpenAlex "polite pool" (recommended) |
+| `--output-dir` | `.` | Directory where the JSONL file is saved |
+| `--output-file` | `papers.jsonl` | JSONL output filename |
+
+---
+
+### Step 2 — Generate per-paper folders
+
+`generate_paper_files.py` reads the JSONL file produced in step 1 and creates
+a folder for each paper containing Markdown, JSON, and plain-text files.
+
+```bash
+# Basic usage (reads papers.jsonl from current directory)
+python scripts/generate_paper_files.py
+
+# Full run with LLM summaries and parallel workers
+export KIMI_API_KEY="sk-..."
+python scripts/generate_paper_files.py \
+    --input papers.jsonl \
+    --output-dir . \
     --max-workers 4
+
+# Skip PDF downloads (faster)
+python scripts/generate_paper_files.py --no-pdf
+
+# Regenerate folders that already exist
+python scripts/generate_paper_files.py --overwrite
+
+# Preview which papers would be processed without writing any files
+python scripts/generate_paper_files.py --dry-run
 ```
 
-### Use OpenAlex backend
+#### `generate_paper_files.py` CLI flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--input` | `papers.jsonl` | Path to the input JSONL file |
+| `--output-dir` | `.` | Root directory for per-paper folders |
+| `--max-workers` | `1` | Parallel worker threads |
+| `--overwrite` | `false` | Re-generate files even if folder exists |
+| `--no-pdf` | `false` | Skip PDF download |
+| `--dry-run` | `false` | List papers without writing files |
+
+---
+
+## End-to-end quickstart
 
 ```bash
-export OPENALEX_EMAIL="yourname@example.com"
-
+# 1. Fetch 20 highly-cited ML papers (no API key needed)
 python scripts/build_paper_dataset.py \
-    --source openalex \
-    --keywords "protein folding,molecular dynamics" \
-    --total 50
+    --keywords "deep learning" "transformer" \
+    --total 20 \
+    --min-citations 500
+
+# 2. Generate per-paper files (metadata-only, no LLM key required)
+python scripts/generate_paper_files.py --input papers.jsonl
 ```
 
-### Overwrite existing folders
-
 ```bash
-python scripts/build_paper_dataset.py --overwrite
-```
+# Full run with AI-generated summaries
+export KIMI_API_KEY="sk-..."
 
-### Skip PDF downloads (faster)
-
-```bash
-python scripts/build_paper_dataset.py --no-pdf
-```
-
-### Custom config file
-
-```bash
-python scripts/build_paper_dataset.py --config my_run.yaml
+python scripts/build_paper_dataset.py --total 100 --min-citations 200
+python scripts/generate_paper_files.py --max-workers 4
 ```
 
 ---
 
 ## Output structure example
 
-After a successful run you will see:
+After running both steps you will see:
 
 ```
 ./
+├── papers.jsonl               ← metadata index (step 1 output)
 ├── 2310.06825v2/
 │   ├── 2310.06825v2.md
 │   ├── 2310.06825v2.parsed.json
 │   ├── 2310.06825v2.pdf
 │   ├── 2310.06825v2.raw.txt
 │   └── 2310.06825v2.summary.json
-├── 2305.10601v1/
-│   ├── ...
-└── failed_papers.jsonl     ← any papers that could not be generated
+└── 2305.10601v1/
+    └── ...
 ```
 
 ### File formats
@@ -171,7 +190,7 @@ After a successful run you will see:
 ```json
 {
   "concept_layer": "One-two sentence high-level contribution summary.",
-  "detail_layer": "Technical details of the method (~100-150 chars).",
+  "detail_layer": "Technical details of the method (~100-150 words).",
   "application_layer": "Real-world applications and future directions."
 }
 ```
@@ -191,7 +210,7 @@ After a successful run you will see:
 One-two sentence high-level contribution summary.
 
 [detail_layer]
-Technical details of the method (~100-150 chars).
+Technical details of the method (~100-150 words).
 
 [application_layer]
 Real-world applications and future directions.
@@ -204,14 +223,6 @@ Real-world applications and future directions.
 * **Add a new LLM backend** – subclass `LLMClient` in `scripts/modules/llm_client.py`
   and register it in `build_llm_client()`.
 * **Add a new data source** – implement a class with a `.search()` method
-  returning `List[PaperRecord]` and wire it in `build_paper_dataset.py:fetch_papers()`.
-* **Change templates** – edit the prompt constants in `llm_client.py` or
-  the `_default_full_text()` / `_write_*` methods in `file_generator.py`.
-
----
-
-## Failed-paper log
-
-Papers that could not be generated are written to `failed_papers.jsonl`
-(one JSON object per line) in the output directory.  Re-run with `--overwrite`
-to retry them.
+  returning `List[PaperRecord]` and wire it in `build_paper_dataset.py`.
+* **Change prompt templates** – edit the prompt constants at the top of
+  `scripts/modules/llm_client.py`.
